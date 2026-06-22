@@ -33,6 +33,9 @@ Cfg := Map()          ; configurazione corrente (chiave -> valore)
 Registered := Map()   ; hotkey attualmente registrati (azione -> stringa tasto)
 g_FirstRun := false   ; true se il file .ini e' stato appena creato (prima esecuzione)
 g_CdActive := false   ; true mentre una finestra di conto alla rovescia e' gia' aperta
+g_AwakeMode := "Off"   ; modalita' "Tieni sveglio": "Off" | "Indefinitamente" | una durata (es. "1 ora")
+g_KeepScreen := false  ; true = tieni acceso anche lo schermo
+INTERVAL_MIN := Map("30 minuti", 30, "1 ora", 60, "2 ore", 120, "4 ore", 240)  ; durate per "Per un intervallo"
 
 LoadConfig()
 RegisterHotkeys()
@@ -47,6 +50,22 @@ if A_IsCompiled {
 A_IconTip := "Volume & Power Tray"
 
 
+; ---------- Sottomenu "Tieni sveglio" (stile PowerToys Awake) ----------
+intervalMenu := Menu()
+intervalMenu.Add("30 minuti", IntervalHandler)
+intervalMenu.Add("1 ora",     IntervalHandler)
+intervalMenu.Add("2 ore",     IntervalHandler)
+intervalMenu.Add("4 ore",     IntervalHandler)
+
+awakeMenu := Menu()
+awakeMenu.Add("Per un intervallo", intervalMenu)                       ; sottomenu con le durate
+awakeMenu.Add("Indefinitamente", (*) => AwakeSetMode("Indefinitamente"))
+awakeMenu.Add("Off", (*) => AwakeSetMode("Off"))
+awakeMenu.Add()                                                        ; separatore
+awakeMenu.Add("Tieni acceso lo schermo", (*) => ToggleKeepScreen())    ; interruttore indipendente
+awakeMenu.Check("Off")
+
+
 ; ---------- Menu del tray (clic destro sull'icona) ----------
 tray := A_TrayMenu
 tray.Delete()                              ; rimuove le voci standard di AutoHotkey
@@ -54,6 +73,8 @@ tray.Add("Volume su",   (*) => VolumeUp())
 tray.Add("Volume giu'", (*) => VolumeDown())
 tray.Add("Sospendi",    (*) => DoSleep())
 tray.Add("Spegni...",   (*) => DoShutdown())
+tray.Add()                                 ; separatore
+tray.Add("Tieni sveglio", awakeMenu)       ; sottomenu Awake (stile PowerToys)
 tray.Add()                                 ; separatore
 tray.Add("Impostazioni...",   (*) => ShowSettings())
 tray.Add("Avvia con Windows", (*) => ToggleStartup())
@@ -186,6 +207,89 @@ DoShutdown(*) {
 }
 ShutdownNow() {
     Shutdown 1     ; 1 = spegni. Se restasse appeso usa Shutdown(1+4) per forzare la chiusura delle app
+}
+
+
+; ============================================================
+;  TIENI SVEGLIO (come PowerToys Awake)
+;  Usa SetThreadExecutionState per impedire la sospensione e,
+;  a scelta, lo spegnimento dello schermo. La modalita' ("Off",
+;  "Indefinitamente" o una durata) e' separata dall'interruttore
+;  "Tieni acceso lo schermo".
+; ============================================================
+IntervalHandler(itemName, *) {
+    global INTERVAL_MIN
+    AwakeSetMode(itemName, INTERVAL_MIN[itemName])
+}
+
+AwakeSetMode(modo, minuti := 0) {
+    global g_AwakeMode
+    SetTimer(AwakeExpire, 0)                ; annulla un eventuale timer di scadenza
+    g_AwakeMode := modo
+    if (minuti > 0)
+        SetTimer(AwakeExpire, -minuti * 60000)   ; one-shot: torna a Off allo scadere
+    ApplyAwake()
+}
+
+AwakeExpire() {
+    AwakeSetMode("Off")
+}
+
+ToggleKeepScreen() {
+    global g_KeepScreen
+    g_KeepScreen := !g_KeepScreen
+    ApplyAwake()
+}
+
+; Applica lo stato corrente al sistema e aggiorna menu/tooltip.
+ApplyAwake() {
+    global g_AwakeMode, g_KeepScreen
+    flags := 0x80000000                     ; ES_CONTINUOUS
+    if (g_AwakeMode != "Off") {
+        flags |= 0x00000001                 ; ES_SYSTEM_REQUIRED  -> niente sospensione
+        if g_KeepScreen
+            flags |= 0x00000002             ; ES_DISPLAY_REQUIRED -> schermo sempre acceso
+    }
+    DllCall("kernel32\SetThreadExecutionState", "UInt", flags)
+    UpdateAwakeMenu()
+    UpdateAwakeTip()
+}
+
+UpdateAwakeMenu() {
+    global awakeMenu, intervalMenu, g_AwakeMode, g_KeepScreen, INTERVAL_MIN
+    awakeMenu.Uncheck("Indefinitamente")
+    awakeMenu.Uncheck("Off")
+    awakeMenu.Uncheck("Per un intervallo")
+    for etichetta, m in INTERVAL_MIN
+        intervalMenu.Uncheck(etichetta)
+    if (g_AwakeMode = "Indefinitamente")
+        awakeMenu.Check("Indefinitamente")
+    else if (g_AwakeMode = "Off")
+        awakeMenu.Check("Off")
+    else {                                   ; una durata: spunta sia il sottomenu sia la voce
+        awakeMenu.Check("Per un intervallo")
+        intervalMenu.Check(g_AwakeMode)
+    }
+    if g_KeepScreen
+        awakeMenu.Check("Tieni acceso lo schermo")
+    else
+        awakeMenu.Uncheck("Tieni acceso lo schermo")
+}
+
+UpdateAwakeTip() {
+    global g_AwakeMode, g_KeepScreen
+    if (g_AwakeMode = "Off")
+        A_IconTip := "Volume & Power Tray"
+    else
+        A_IconTip := "Volume & Power Tray`nSveglio: " g_AwakeMode (g_KeepScreen ? " (+ schermo)" : "")
+}
+
+; Testo leggibile dello stato "Tieni sveglio" (usato anche nella finestra Mostra hotkey).
+AwakeStateText() {
+    global g_AwakeMode, g_KeepScreen
+    if (g_AwakeMode = "Off")
+        return "Off"
+    return g_AwakeMode (g_KeepScreen ? " + schermo" : "")
 }
 
 
@@ -404,13 +508,23 @@ ShowInfo(*) {
     }
     yEnd := 70 + righe.Length * 30
 
+    ; separatore
     g.AddText("x22 y" (yEnd + 4) " w326 0x10", "")
+
+    ; stato "Tieni sveglio"
+    g.SetFont("s10", "Segoe UI")
+    g.AddText("x22 y" (yEnd + 16) " w110 c444444", "Tieni sveglio")
+    g.SetFont("s10 Bold", "Segoe UI")
+    g.AddText("x140 y" (yEnd + 16) " w208 c2563EB", AwakeStateText())
+
+    ; separatore + nota
+    g.AddText("x22 y" (yEnd + 44) " w326 0x10", "")
     g.SetFont("s9", "Segoe UI")
-    g.AddText("x22 y" (yEnd + 16) " w326 c808080",
+    g.AddText("x22 y" (yEnd + 56) " w326 c808080",
         "Per cambiare i tasti usa 'Impostazioni...' nel menu del tray.")
 
     g.SetFont("s9", "Segoe UI")
-    btn := g.AddButton("x258 y" (yEnd + 64) " w90 Default", "OK")
+    btn := g.AddButton("x258 y" (yEnd + 104) " w90 Default", "OK")
     Chiudi(*) => g.Destroy()
     btn.OnEvent("Click", Chiudi)
     g.OnEvent("Close", Chiudi)

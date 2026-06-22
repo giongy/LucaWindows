@@ -25,6 +25,8 @@ if not exist "%IN%" (
 rem --- Chiude l'eventuale istanza in esecuzione (altrimenti l'exe e' bloccato) ---
 echo Chiudo eventuali istanze in esecuzione...
 taskkill /IM VolumePowerTray.exe /F >nul 2>&1
+rem attende ~1s che il file venga rilasciato (evita "Could not move ... (C1)")
+ping -n 2 127.0.0.1 >nul
 
 rem --- Compilazione ---
 echo Compilazione in corso...

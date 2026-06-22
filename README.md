@@ -14,6 +14,7 @@ autonomo (non richiede AutoHotkey installato sul PC di destinazione).
 - ⚙️ **Finestra Impostazioni**: cambia tasti e opzioni senza ricompilare (con "premi per assegnare")
 - 🔔 Notifica all'avvio e finestra "Mostra hotkey"
 - 🚀 Opzione **Avvia con Windows** (crea un collegamento nella cartella Esecuzione automatica)
+- ☕ **Tieni sveglio** (stile PowerToys Awake): impedisce la sospensione e, a scelta, lo spegnimento dello schermo — indefinitamente o per un intervallo (30 min / 1 / 2 / 4 ore)
 
 ## Hotkey predefiniti
 
