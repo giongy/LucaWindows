@@ -1,0 +1,7 @@
+# Configurazione locale: la rigenera l'app, contiene impostazioni personali
+VolumePowerTray.ini
+
+# File temporanei / di lavoro
+_*
+*.tmp
+*.log
