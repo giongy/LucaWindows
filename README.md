@@ -8,7 +8,7 @@ autonomo (non richiede AutoHotkey installato sul PC di destinazione).
 
 ## Funzioni
 
-- 🔊 **Volume su / giù** (mostra la barra volume di Windows, oppure cambio silenzioso a step configurabile)
+- 🔊 **Volume su / giù** (mostra la barra volume di Windows, oppure cambio silenzioso)
 - 😴 **Sospensione (sleep)** con finestra di **conto alla rovescia** e pulsante per annullare
 - ⏻ **Spegnimento** con conto alla rovescia, icona di avviso e pulsante per annullare
 - ⚙️ **Finestra Impostazioni**: cambia tasti e opzioni senza ricompilare (con "premi per assegnare")

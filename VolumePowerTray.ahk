@@ -26,7 +26,6 @@ Defaults := Map(
     "Sleep",           "F1",
     "Shutdown",        "F2",
     "UsaTastiMedia",   "1",
-    "PassoVolume",     "5",
     "SecondiConferma", "5",
     "NotificaAvvio",   "1")
 
@@ -103,7 +102,6 @@ CreateDefaultConfig() {
         . "Sleep=" Defaults["Sleep"] "`r`n"
         . "Shutdown=" Defaults["Shutdown"] "`r`n"
         . "UsaTastiMedia=" Defaults["UsaTastiMedia"] "`r`n"
-        . "PassoVolume=" Defaults["PassoVolume"] "`r`n"
         . "SecondiConferma=" Defaults["SecondiConferma"] "`r`n"
         . "NotificaAvvio=" Defaults["NotificaAvvio"] "`r`n"
     try FileAppend(testo, ConfigFile)
@@ -164,7 +162,7 @@ VolumeUp(*) {
     if (Cfg["UsaTastiMedia"] = "1")
         Send "{Volume_Up}"                 ; tasto multimediale: mostra la barra volume
     else
-        SoundSetVolume "+" Cfg["PassoVolume"]
+        SoundSetVolume "+5"                ; cambio silenzioso del 5%
 }
 
 VolumeDown(*) {
@@ -172,7 +170,7 @@ VolumeDown(*) {
     if (Cfg["UsaTastiMedia"] = "1")
         Send "{Volume_Down}"
     else
-        SoundSetVolume "-" Cfg["PassoVolume"]
+        SoundSetVolume "-5"
 }
 
 DoSleep(*) {
@@ -293,9 +291,6 @@ ShowSettings(*) {
     chkNotif := s.AddCheckBox("x28 y" y " w382 " (Cfg["NotificaAvvio"] = "1" ? "Checked" : ""),
         "Mostra una notifica all'avvio")
     y += 32
-    s.AddText("x28 y" (y + 3) " w150", "Passo volume (%)")
-    editPasso := s.AddEdit("x180 y" y " w80 Number", Cfg["PassoVolume"])
-    y += 30
     s.AddText("x28 y" (y + 3) " w150", "Secondi conferma")
     editSec := s.AddEdit("x180 y" y " w80 Number", Cfg["SecondiConferma"])
     y += 42
@@ -315,7 +310,6 @@ ShowSettings(*) {
         Cfg["Shutdown"]        := Trim(campi["Shutdown"].Value)
         Cfg["UsaTastiMedia"]   := chkMedia.Value ? "1" : "0"
         Cfg["NotificaAvvio"]   := chkNotif.Value ? "1" : "0"
-        Cfg["PassoVolume"]     := ValidaNumero(editPasso.Value, 5)
         Cfg["SecondiConferma"] := ValidaNumero(editSec.Value, 5)
         SaveConfig()
         RegisterHotkeys()
@@ -328,7 +322,6 @@ ShowSettings(*) {
             c.Value := Defaults[k]
         chkMedia.Value  := (Defaults["UsaTastiMedia"] = "1")
         chkNotif.Value  := (Defaults["NotificaAvvio"] = "1")
-        editPasso.Value := Defaults["PassoVolume"]
         editSec.Value   := Defaults["SecondiConferma"]
     }
     btnSalva.OnEvent("Click", Salva)
