@@ -27,7 +27,9 @@ Defaults := Map(
     "Shutdown",        "F2",
     "UsaTastiMedia",   "1",
     "SecondiConferma", "5",
-    "NotificaAvvio",   "1")
+    "NotificaAvvio",   "1",
+    "TieniSveglio",    "Off",
+    "TieniSchermo",    "0")
 
 Cfg := Map()          ; configurazione corrente (chiave -> valore)
 Registered := Map()   ; hotkey attualmente registrati (azione -> stringa tasto)
@@ -35,7 +37,7 @@ g_FirstRun := false   ; true se il file .ini e' stato appena creato (prima esecu
 g_CdActive := false   ; true mentre una finestra di conto alla rovescia e' gia' aperta
 g_AwakeMode := "Off"   ; modalita' "Tieni sveglio": "Off" | "Indefinitamente" | una durata (es. "1 ora")
 g_KeepScreen := false  ; true = tieni acceso anche lo schermo
-INTERVAL_MIN := Map("30 minuti", 30, "1 ora", 60, "2 ore", 120, "4 ore", 240)  ; durate per "Per un intervallo"
+INTERVAL_MIN := Map("30 minuti", 30, "1 ora", 60, "2 ore", 120, "4 ore", 240, "8 ore", 480, "12 ore", 720)  ; durate per "Per un intervallo"
 
 LoadConfig()
 RegisterHotkeys()
@@ -56,6 +58,8 @@ intervalMenu.Add("30 minuti", IntervalHandler)
 intervalMenu.Add("1 ora",     IntervalHandler)
 intervalMenu.Add("2 ore",     IntervalHandler)
 intervalMenu.Add("4 ore",     IntervalHandler)
+intervalMenu.Add("8 ore",     IntervalHandler)
+intervalMenu.Add("12 ore",    IntervalHandler)
 
 awakeMenu := Menu()
 awakeMenu.Add("Per un intervallo", intervalMenu)                       ; sottomenu con le durate
@@ -85,6 +89,11 @@ tray.Add("Esci", (*) => ExitApp())
 tray.Default := "Mostra hotkey"
 UpdateStartupCheck()
 
+; ripristina lo stato "Tieni sveglio" salvato (gli intervalli non vengono ripristinati)
+g_AwakeMode  := (Cfg["TieniSveglio"] = "Indefinitamente") ? "Indefinitamente" : "Off"
+g_KeepScreen := (Cfg["TieniSchermo"] = "1")
+ApplyAwake()
+
 
 ; ---------- Onboarding / notifica all'avvio ----------
 if g_FirstRun
@@ -109,13 +118,21 @@ LoadConfig() {
 
 CreateDefaultConfig() {
     global ConfigFile, CONFIG_SECTION, Defaults
-    testo := "; Configurazione di Volume & Power Tray`r`n"
-        . "; Puoi modificarla da qui o dalla finestra Impostazioni nel menu del tray.`r`n"
+    testo := "; ============================================================`r`n"
+        . "; Volume & Power Tray - configurazione`r`n"
+        . "; ============================================================`r`n"
+        . "; Modifica i valori qui sotto oppure usa la finestra Impostazioni`r`n"
+        . "; nel menu del tray (clic destro sull'icona).`r`n"
         . ";`r`n"
-        . "; Tasti:  ^ = Ctrl   ! = Alt   + = Shift   # = Win`r`n"
+        . "; Tasti (modificatori):  ^ = Ctrl   ! = Alt   + = Shift   # = Win`r`n"
         . ";   esempi:  F11   ^!Up   #PgUp   ^!s`r`n"
-        . "; UsaTastiMedia:  1 = mostra la barra volume di Windows, 0 = cambio silenzioso`r`n"
-        . "; NotificaAvvio:  1 = mostra una notifica all'avvio, 0 = avvio silenzioso`r`n"
+        . ";`r`n"
+        . "; UsaTastiMedia    1 = mostra la barra volume di Windows, 0 = cambio silenzioso`r`n"
+        . "; SecondiConferma  durata del conto alla rovescia prima di sleep/spegnimento`r`n"
+        . "; NotificaAvvio    1 = mostra una notifica all'avvio, 0 = avvio silenzioso`r`n"
+        . "; TieniSveglio     Off | Indefinitamente   (gli intervalli non vengono ricordati)`r`n"
+        . "; TieniSchermo     1 = tieni acceso anche lo schermo quando sei sveglio`r`n"
+        . "; ============================================================`r`n"
         . "`r`n"
         . "[" CONFIG_SECTION "]`r`n"
         . "VolumeUp=" Defaults["VolumeUp"] "`r`n"
@@ -125,6 +142,8 @@ CreateDefaultConfig() {
         . "UsaTastiMedia=" Defaults["UsaTastiMedia"] "`r`n"
         . "SecondiConferma=" Defaults["SecondiConferma"] "`r`n"
         . "NotificaAvvio=" Defaults["NotificaAvvio"] "`r`n"
+        . "TieniSveglio=" Defaults["TieniSveglio"] "`r`n"
+        . "TieniSchermo=" Defaults["TieniSchermo"] "`r`n"
     try FileAppend(testo, ConfigFile)
 }
 
@@ -229,6 +248,7 @@ AwakeSetMode(modo, minuti := 0) {
     if (minuti > 0)
         SetTimer(AwakeExpire, -minuti * 60000)   ; one-shot: torna a Off allo scadere
     ApplyAwake()
+    SaveAwake()
 }
 
 AwakeExpire() {
@@ -239,6 +259,17 @@ ToggleKeepScreen() {
     global g_KeepScreen
     g_KeepScreen := !g_KeepScreen
     ApplyAwake()
+    SaveAwake()
+}
+
+; Salva nello .ini lo stato "Tieni sveglio". Gli intervalli vengono salvati come Off
+; (un tempo residuo non avrebbe senso dopo un riavvio).
+SaveAwake() {
+    global Cfg, g_AwakeMode, g_KeepScreen, ConfigFile, CONFIG_SECTION
+    Cfg["TieniSveglio"] := (g_AwakeMode = "Indefinitamente") ? "Indefinitamente" : "Off"
+    Cfg["TieniSchermo"] := g_KeepScreen ? "1" : "0"
+    try IniWrite(Cfg["TieniSveglio"], ConfigFile, CONFIG_SECTION, "TieniSveglio")
+    try IniWrite(Cfg["TieniSchermo"], ConfigFile, CONFIG_SECTION, "TieniSchermo")
 }
 
 ; Applica lo stato corrente al sistema e aggiorna menu/tooltip.
