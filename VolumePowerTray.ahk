@@ -37,6 +37,7 @@ g_FirstRun := false   ; true se il file .ini e' stato appena creato (prima esecu
 g_CdActive := false   ; true mentre una finestra di conto alla rovescia e' gia' aperta
 g_AwakeMode := "Off"   ; modalita' "Tieni sveglio": "Off" | "Indefinitamente" | una durata (es. "1 ora")
 g_KeepScreen := false  ; true = tieni acceso anche lo schermo
+g_AwakeExpiry := 0     ; A_TickCount di scadenza dell'intervallo (0 = nessuna scadenza)
 INTERVAL_MIN := Map("30 minuti", 30, "1 ora", 60, "2 ore", 120, "4 ore", 240, "8 ore", 480, "12 ore", 720)  ; durate per "Per un intervallo"
 
 LoadConfig()
@@ -219,9 +220,10 @@ ShutdownNow() {
 ;  "Tieni acceso lo schermo".
 ; ============================================================
 AwakeSetMode(modo, minuti := 0) {
-    global g_AwakeMode
+    global g_AwakeMode, g_AwakeExpiry
     SetTimer(AwakeExpire, 0)                ; annulla un eventuale timer di scadenza
     g_AwakeMode := modo
+    g_AwakeExpiry := (minuti > 0) ? (A_TickCount + minuti * 60000) : 0
     if (minuti > 0)
         SetTimer(AwakeExpire, -minuti * 60000)   ; one-shot: torna a Off allo scadere
     ApplyAwake()
@@ -252,7 +254,24 @@ ApplyAwake() {
             flags |= 0x00000002             ; ES_DISPLAY_REQUIRED -> schermo sempre acceso
     }
     DllCall("kernel32\SetThreadExecutionState", "UInt", flags)
+    ; ri-asserzione periodica: ogni 50s resetta il timer di inattivita' di Windows,
+    ; cosi' il sistema non si addormenta nemmeno se il flag "continuo" non bastasse
+    SetTimer(AwakeKeepAlive, (g_AwakeMode != "Off") ? 50000 : 0)
     UpdateAwakeTip()
+}
+
+; Ripetuta ogni 50s mentre "Tieni sveglio" e' attivo: rinnova la richiesta al sistema.
+AwakeKeepAlive() {
+    global g_AwakeMode, g_KeepScreen
+    if (g_AwakeMode = "Off") {
+        SetTimer(AwakeKeepAlive, 0)
+        return
+    }
+    flags := 0x00000001                     ; ES_SYSTEM_REQUIRED (senza CONTINUOUS = reset del timer di inattivita')
+    if g_KeepScreen
+        flags |= 0x00000002
+    DllCall("kernel32\SetThreadExecutionState", "UInt", flags)
+    UpdateAwakeTip()                        ; aggiorna il tempo rimanente nel tooltip
 }
 
 ; Finestra "Tieni sveglio": modalita' (radio) + durata (tendina) + schermo (casella).
@@ -279,13 +298,16 @@ ShowAwake(*) {
 
     chk := a.AddCheckBox("x20 y198 w320", "Tieni acceso lo schermo")
 
-    a.AddText("x20 y226 w320 0x10", "")
-    a.SetFont("s9", "Segoe UI")
-    a.AddText("x20 y238 w320 c808080", "Lo stato viene ricordato al riavvio (gli intervalli no).")
+    a.SetFont("s9 Bold", "Segoe UI")
+    lblRim := a.AddText("x20 y226 w320 c2563EB", "")     ; tempo rimanente (aggiornato ogni secondo)
+
+    a.AddText("x20 y250 w320 0x10", "")
+    a.SetFont("s9 Norm", "Segoe UI")
+    a.AddText("x20 y262 w320 c808080", "Lo stato viene ricordato al riavvio (gli intervalli no).")
 
     a.SetFont("s9", "Segoe UI")
-    a.AddButton("x150 y270 w90 Default", "Applica").OnEvent("Click", Applica)
-    a.AddButton("x250 y270 w90", "Chiudi").OnEvent("Click", Chiudi)
+    a.AddButton("x150 y294 w90 Default", "Applica").OnEvent("Click", Applica)
+    a.AddButton("x250 y294 w90", "Chiudi").OnEvent("Click", Chiudi)
     a.OnEvent("Close", Chiudi)
     a.OnEvent("Escape", Chiudi)
 
@@ -303,9 +325,12 @@ ShowAwake(*) {
     chk.Value := g_KeepScreen
 
     a.Show("Center")
+    AggiornaRimasto()
+    SetTimer(AggiornaRimasto, 1000)
 
     Applica(*) {
         global g_KeepScreen, INTERVAL_MIN
+        SetTimer(AggiornaRimasto, 0)
         g_KeepScreen := chk.Value ? true : false
         if rOff.Value
             AwakeSetMode("Off")
@@ -315,15 +340,44 @@ ShowAwake(*) {
             AwakeSetMode(ddl.Text, INTERVAL_MIN[ddl.Text])
         a.Destroy()
     }
-    Chiudi(*) => a.Destroy()
+    Chiudi(*) {
+        SetTimer(AggiornaRimasto, 0)
+        a.Destroy()
+    }
+    AggiornaRimasto() {
+        r := RemainingText()
+        lblRim.Text := (r != "") ? "Tempo rimanente: " r : ""
+    }
 }
 
 UpdateAwakeTip() {
     global g_AwakeMode, g_KeepScreen
-    if (g_AwakeMode = "Off")
+    if (g_AwakeMode = "Off") {
         A_IconTip := "Volume & Power Tray"
-    else
-        A_IconTip := "Volume & Power Tray`nSveglio: " g_AwakeMode (g_KeepScreen ? " (+ schermo)" : "")
+        return
+    }
+    extra := g_KeepScreen ? " (+ schermo)" : ""
+    rim := RemainingText()
+    A_IconTip := "Volume & Power Tray`nSveglio: " g_AwakeMode extra (rim != "" ? " - resta " rim : "")
+}
+
+; Tempo rimanente prima della scadenza dell'intervallo (es. "1 h 23 min"); "" se non c'e' scadenza.
+RemainingText() {
+    global g_AwakeExpiry
+    if (g_AwakeExpiry = 0)
+        return ""
+    ms := g_AwakeExpiry - A_TickCount
+    if (ms <= 0)
+        return ""
+    totSec := ms // 1000
+    h := totSec // 3600
+    m := Mod(totSec, 3600) // 60
+    s := Mod(totSec, 60)
+    if (h > 0)
+        return h " h " m " min"
+    if (m > 0)
+        return m " min " s " s"
+    return s " s"
 }
 
 ; Testo leggibile dello stato "Tieni sveglio" (usato anche nella finestra Mostra hotkey).
@@ -331,7 +385,8 @@ AwakeStateText() {
     global g_AwakeMode, g_KeepScreen
     if (g_AwakeMode = "Off")
         return "Off"
-    return g_AwakeMode (g_KeepScreen ? " + schermo" : "")
+    rim := RemainingText()
+    return g_AwakeMode (g_KeepScreen ? " + schermo" : "") (rim != "" ? "  (resta " rim ")" : "")
 }
 
 
