@@ -15,6 +15,7 @@ autonomo (non richiede AutoHotkey installato sul PC di destinazione).
 - 🔔 Notifica all'avvio e finestra "Mostra hotkey"
 - 🚀 Opzione **Avvia con Windows** (crea un collegamento nella cartella Esecuzione automatica)
 - ☕ **Tieni sveglio** (stile PowerToys Awake): impedisce la sospensione e, a scelta, lo spegnimento dello schermo — indefinitamente o per un intervallo (30 min / 1 / 2 / 4 / 8 / 12 ore)
+- 🎨 Menu del tray con **icone colorate** e **tema scuro** su Windows 11
 
 ## Hotkey predefiniti
 
@@ -69,3 +70,4 @@ stampa **a grandezza reale (100%)**.
 | `Compila.bat` | Ricompila il sorgente in eseguibile |
 | `EtichetteTasti.html` | Etichette stampabili per i tasti |
 | `VolumePowerTray.ini` | Configurazione locale (generata in automatico, non versionata) |
+| `icons/` | Icone colorate delle voci del menu (incorporate nell'exe alla compilazione) |

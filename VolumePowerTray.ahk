@@ -52,6 +52,30 @@ if A_IsCompiled {
 }
 A_IconTip := "Volume & Power Tray"
 
+; prova a rendere scuri i menu su Windows 11 (API uxtheme non documentate; ignorata se non supportata)
+try {
+    DllCall("uxtheme\#135", "Int", 2)   ; SetPreferredAppMode(2 = ForceDark)
+    DllCall("uxtheme\#136")             ; FlushMenuThemes
+}
+
+
+; ---------- Sottomenu "Tieni sveglio" ----------
+intervalMenu := Menu()
+intervalMenu.Add("30 minuti", IntervalHandler)
+intervalMenu.Add("1 ora",     IntervalHandler)
+intervalMenu.Add("2 ore",     IntervalHandler)
+intervalMenu.Add("4 ore",     IntervalHandler)
+intervalMenu.Add("8 ore",     IntervalHandler)
+intervalMenu.Add("12 ore",    IntervalHandler)
+
+awakeMenu := Menu()
+awakeMenu.Add("Per un intervallo", intervalMenu)                       ; sottomenu con le durate
+awakeMenu.Add("Indefinitamente", (*) => AwakeSetMode("Indefinitamente"))
+awakeMenu.Add("Off", (*) => AwakeSetMode("Off"))
+awakeMenu.Add()                                                        ; separatore
+awakeMenu.Add("Tieni acceso lo schermo", (*) => ToggleKeepScreen())    ; interruttore indipendente
+awakeMenu.Check("Off")
+
 
 ; ---------- Menu del tray (clic destro sull'icona) ----------
 tray := A_TrayMenu
@@ -61,7 +85,7 @@ tray.Add("Volume giu'", (*) => VolumeDown())
 tray.Add("Sospendi",    (*) => DoSleep())
 tray.Add("Spegni...",   (*) => DoShutdown())
 tray.Add()                                 ; separatore
-tray.Add("Tieni sveglio...", (*) => ShowAwake())   ; apre la finestra Awake
+tray.Add("Tieni sveglio", awakeMenu)       ; sottomenu nativo
 tray.Add()                                 ; separatore
 tray.Add("Impostazioni...",   (*) => ShowSettings())
 tray.Add("Avvia con Windows", (*) => ToggleStartup())
@@ -71,6 +95,24 @@ tray.Add()                                 ; separatore
 tray.Add("Esci", (*) => ExitApp())
 tray.Default := "Mostra hotkey"
 UpdateStartupCheck()
+
+; ---------- Icone delle voci del menu (incorporate nell'exe, estratte in %TEMP%) ----------
+iconDir := A_Temp "\VolumePowerTray_icons"
+try DirCreate(iconDir)
+FileInstall("icons\volsu.ico",        iconDir "\volsu.ico", 1)
+FileInstall("icons\volgiu.ico",       iconDir "\volgiu.ico", 1)
+FileInstall("icons\sospendi.ico",     iconDir "\sospendi.ico", 1)
+FileInstall("icons\spegni.ico",       iconDir "\spegni.ico", 1)
+FileInstall("icons\sveglio.ico",      iconDir "\sveglio.ico", 1)
+FileInstall("icons\impostazioni.ico", iconDir "\impostazioni.ico", 1)
+FileInstall("icons\hotkey.ico",       iconDir "\hotkey.ico", 1)
+FileInstall("icons\info.ico",         iconDir "\info.ico", 1)
+FileInstall("icons\esci.ico",         iconDir "\esci.ico", 1)
+for voce, nomeFile in Map(
+    "Volume su", "volsu",  "Volume giu'", "volgiu",  "Sospendi", "sospendi",
+    "Spegni...", "spegni",  "Tieni sveglio", "sveglio",  "Impostazioni...", "impostazioni",
+    "Mostra hotkey", "hotkey",  "Info", "info",  "Esci", "esci")
+    try tray.SetIcon(voce, iconDir "\" nomeFile ".ico")
 
 ; ripristina lo stato "Tieni sveglio" salvato (gli intervalli non vengono ripristinati)
 g_AwakeMode  := (Cfg["TieniSveglio"] = "Indefinitamente") ? "Indefinitamente" : "Off"
@@ -257,6 +299,7 @@ ApplyAwake() {
     ; ri-asserzione periodica: ogni 50s resetta il timer di inattivita' di Windows,
     ; cosi' il sistema non si addormenta nemmeno se il flag "continuo" non bastasse
     SetTimer(AwakeKeepAlive, (g_AwakeMode != "Off") ? 50000 : 0)
+    UpdateAwakeMenu()
     UpdateAwakeTip()
 }
 
@@ -274,80 +317,38 @@ AwakeKeepAlive() {
     UpdateAwakeTip()                        ; aggiorna il tempo rimanente nel tooltip
 }
 
-; Finestra "Tieni sveglio": modalita' (radio) + durata (tendina) + schermo (casella).
-ShowAwake(*) {
-    global g_AwakeMode, g_KeepScreen, INTERVAL_MIN
+IntervalHandler(itemName, *) {
+    global INTERVAL_MIN
+    AwakeSetMode(itemName, INTERVAL_MIN[itemName])
+}
 
-    a := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", "Tieni sveglio - Volume & Power Tray")
-    a.BackColor := "White"
-    a.MarginX := 20
-    a.MarginY := 16
+ToggleKeepScreen() {
+    global g_KeepScreen
+    g_KeepScreen := !g_KeepScreen
+    ApplyAwake()
+    SaveAwake()
+}
 
-    a.SetFont("s12 Bold", "Segoe UI")
-    a.AddText("x20 y16 w320 c2563EB", "Tieni sveglio")
-    a.AddText("x20 y46 w320 0x10", "")
-
-    ; riquadro con bordo: scelta della modalita'
-    a.SetFont("s10 Norm", "Segoe UI")
-    a.AddGroupBox("x20 y58 w320 h126", "Modalita'")
-    rOff := a.AddRadio("x34 y84 Group", "Off")
-    rInd := a.AddRadio("x34 y110", "Indefinitamente")
-    rInt := a.AddRadio("x34 y139 w120", "Per un intervallo")
-    durate := ["30 minuti", "1 ora", "2 ore", "4 ore", "8 ore", "12 ore"]
-    ddl := a.AddDropDownList("x160 y137 w160", durate)
-
-    chk := a.AddCheckBox("x20 y198 w320", "Tieni acceso lo schermo")
-
-    a.SetFont("s9 Bold", "Segoe UI")
-    lblRim := a.AddText("x20 y226 w320 c2563EB", "")     ; tempo rimanente (aggiornato ogni secondo)
-
-    a.AddText("x20 y250 w320 0x10", "")
-    a.SetFont("s9 Norm", "Segoe UI")
-    a.AddText("x20 y262 w320 c808080", "Lo stato viene ricordato al riavvio (gli intervalli no).")
-
-    a.SetFont("s9", "Segoe UI")
-    a.AddButton("x150 y294 w90 Default", "Applica").OnEvent("Click", Applica)
-    a.AddButton("x250 y294 w90", "Chiudi").OnEvent("Click", Chiudi)
-    a.OnEvent("Close", Chiudi)
-    a.OnEvent("Escape", Chiudi)
-
-    ; preseleziona lo stato corrente
+; Aggiorna le spunte del sottomenu "Tieni sveglio" in base allo stato corrente.
+UpdateAwakeMenu() {
+    global awakeMenu, intervalMenu, g_AwakeMode, g_KeepScreen, INTERVAL_MIN
+    awakeMenu.Uncheck("Indefinitamente")
+    awakeMenu.Uncheck("Off")
+    awakeMenu.Uncheck("Per un intervallo")
+    for etichetta, m in INTERVAL_MIN
+        intervalMenu.Uncheck(etichetta)
     if (g_AwakeMode = "Indefinitamente")
-        rInd.Value := 1
+        awakeMenu.Check("Indefinitamente")
     else if (g_AwakeMode = "Off")
-        rOff.Value := 1
-    else {
-        rInt.Value := 1
-        ddl.Choose(g_AwakeMode)
+        awakeMenu.Check("Off")
+    else {                                   ; una durata: spunta sia il sottomenu sia la voce
+        awakeMenu.Check("Per un intervallo")
+        intervalMenu.Check(g_AwakeMode)
     }
-    if (!rInt.Value)
-        ddl.Choose("1 ora")                  ; durata di default quando si sceglie l'intervallo
-    chk.Value := g_KeepScreen
-
-    a.Show("Center")
-    AggiornaRimasto()
-    SetTimer(AggiornaRimasto, 1000)
-
-    Applica(*) {
-        global g_KeepScreen, INTERVAL_MIN
-        SetTimer(AggiornaRimasto, 0)
-        g_KeepScreen := chk.Value ? true : false
-        if rOff.Value
-            AwakeSetMode("Off")
-        else if rInd.Value
-            AwakeSetMode("Indefinitamente")
-        else
-            AwakeSetMode(ddl.Text, INTERVAL_MIN[ddl.Text])
-        a.Destroy()
-    }
-    Chiudi(*) {
-        SetTimer(AggiornaRimasto, 0)
-        a.Destroy()
-    }
-    AggiornaRimasto() {
-        r := RemainingText()
-        lblRim.Text := (r != "") ? "Tempo rimanente: " r : ""
-    }
+    if g_KeepScreen
+        awakeMenu.Check("Tieni acceso lo schermo")
+    else
+        awakeMenu.Uncheck("Tieni acceso lo schermo")
 }
 
 UpdateAwakeTip() {
