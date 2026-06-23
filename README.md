@@ -12,7 +12,7 @@ autonomo (non richiede AutoHotkey installato sul PC di destinazione).
 - 😴 **Sospensione (sleep)** con finestra di **conto alla rovescia** e pulsante per annullare
 - ⏻ **Spegnimento** con conto alla rovescia, icona di avviso e pulsante per annullare
 - ⚙️ **Finestra Impostazioni**: cambia tasti e opzioni senza ricompilare (con "premi per assegnare")
-- 🔔 Notifica all'avvio e finestra "Mostra hotkey"
+- 🔔 Finestra "Mostra hotkey" con il riepilogo dei tasti
 - 🚀 Opzione **Avvia con Windows** (crea un collegamento nella cartella Esecuzione automatica)
 - ☕ **Tieni sveglio** (stile PowerToys Awake): impedisce la sospensione e, a scelta, lo spegnimento dello schermo — indefinitamente o per un intervallo (30 min / 1 / 2 / 4 / 8 / 12 ore)
 - 🎨 Menu del tray con **icone colorate** e **tema scuro** su Windows 11

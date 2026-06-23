@@ -27,7 +27,6 @@ Defaults := Map(
     "Shutdown",        "F2",
     "UsaTastiMedia",   "1",
     "SecondiConferma", "5",
-    "NotificaAvvio",   "1",
     "TieniSveglio",    "Off",
     "TieniSchermo",    "0")
 
@@ -123,8 +122,6 @@ ApplyAwake()
 ; ---------- Onboarding / notifica all'avvio ----------
 if g_FirstRun
     ShowInfo()                             ; prima esecuzione: mostra subito gli hotkey
-else if (Cfg["NotificaAvvio"] = "1")
-    StartupToast()
 
 
 ; ============================================================
@@ -154,7 +151,6 @@ CreateDefaultConfig() {
         . ";`r`n"
         . "; UsaTastiMedia    1 = mostra la barra volume di Windows, 0 = cambio silenzioso`r`n"
         . "; SecondiConferma  durata del conto alla rovescia prima di sleep/spegnimento`r`n"
-        . "; NotificaAvvio    1 = mostra una notifica all'avvio, 0 = avvio silenzioso`r`n"
         . "; TieniSveglio     Off | Indefinitamente   (gli intervalli non vengono ricordati)`r`n"
         . "; TieniSchermo     1 = tieni acceso anche lo schermo quando sei sveglio`r`n"
         . "; ============================================================`r`n"
@@ -166,7 +162,6 @@ CreateDefaultConfig() {
         . "Shutdown=" Defaults["Shutdown"] "`r`n"
         . "UsaTastiMedia=" Defaults["UsaTastiMedia"] "`r`n"
         . "SecondiConferma=" Defaults["SecondiConferma"] "`r`n"
-        . "NotificaAvvio=" Defaults["NotificaAvvio"] "`r`n"
         . "TieniSveglio=" Defaults["TieniSveglio"] "`r`n"
         . "TieniSchermo=" Defaults["TieniSchermo"] "`r`n"
     try FileAppend(testo, ConfigFile)
@@ -183,14 +178,6 @@ ConfirmSecs() {
     v := Cfg["SecondiConferma"]
     return (IsInteger(v) && v + 0 >= 1) ? v + 0 : 5
 }
-
-StartupToast() {
-    global Cfg
-    msg := "Vol+ " PrettyKeys(Cfg["VolumeUp"]) "    Vol- " PrettyKeys(Cfg["VolumeDown"]) "`n"
-         . "Sleep " PrettyKeys(Cfg["Sleep"]) "    Spegni " PrettyKeys(Cfg["Shutdown"])
-    TrayTip(msg, "Volume & Power Tray attivo", 0x1)   ; 0x1 = icona info
-}
-
 
 ; ============================================================
 ;  REGISTRAZIONE DEGLI HOTKEY GLOBALI
@@ -489,9 +476,6 @@ ShowSettings(*) {
     y += 28
     chkMedia := s.AddCheckBox("x28 y" y " w382 " (Cfg["UsaTastiMedia"] = "1" ? "Checked" : ""),
         "Mostra la barra del volume di Windows")
-    y += 28
-    chkNotif := s.AddCheckBox("x28 y" y " w382 " (Cfg["NotificaAvvio"] = "1" ? "Checked" : ""),
-        "Mostra una notifica all'avvio")
     y += 32
     s.AddText("x28 y" (y + 3) " w150", "Secondi conferma")
     editSec := s.AddEdit("x180 y" y " w80 Number", Cfg["SecondiConferma"])
@@ -511,7 +495,6 @@ ShowSettings(*) {
         Cfg["Sleep"]           := Trim(campi["Sleep"].Value)
         Cfg["Shutdown"]        := Trim(campi["Shutdown"].Value)
         Cfg["UsaTastiMedia"]   := chkMedia.Value ? "1" : "0"
-        Cfg["NotificaAvvio"]   := chkNotif.Value ? "1" : "0"
         Cfg["SecondiConferma"] := ValidaNumero(editSec.Value, 5)
         SaveConfig()
         RegisterHotkeys()
@@ -523,7 +506,6 @@ ShowSettings(*) {
         for k, c in campi
             c.Value := Defaults[k]
         chkMedia.Value  := (Defaults["UsaTastiMedia"] = "1")
-        chkNotif.Value  := (Defaults["NotificaAvvio"] = "1")
         editSec.Value   := Defaults["SecondiConferma"]
     }
     btnSalva.OnEvent("Click", Salva)
