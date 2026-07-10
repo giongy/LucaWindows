@@ -15,7 +15,7 @@
 ;  ricompilare.
 ; ============================================================
 
-APP_VERSION := "1.1"
+APP_VERSION := "1.2"
 ConfigFile := A_ScriptDir "\VolumePowerTray.ini"
 CONFIG_SECTION := "Impostazioni"
 
@@ -117,6 +117,7 @@ for voce, nomeFile in Map(
 g_AwakeMode  := (Cfg["TieniSveglio"] = "Indefinitamente") ? "Indefinitamente" : "Off"
 g_KeepScreen := (Cfg["TieniSchermo"] = "1")
 ApplyAwake()
+OnMessage(0x218, OnPowerBroadcast)         ; WM_POWERBROADCAST: riapplica al risveglio
 
 
 ; ---------- Onboarding / notifica all'avvio ----------
@@ -283,25 +284,40 @@ ApplyAwake() {
             flags |= 0x00000002             ; ES_DISPLAY_REQUIRED -> schermo sempre acceso
     }
     DllCall("kernel32\SetThreadExecutionState", "UInt", flags)
-    ; ri-asserzione periodica: ogni 50s resetta il timer di inattivita' di Windows,
-    ; cosi' il sistema non si addormenta nemmeno se il flag "continuo" non bastasse
+    ; ri-asserzione periodica: ogni 50s ripete la richiesta continua, perche'
+    ; Windows puo' scartarla dopo un ciclo di sospensione/ripresa
     SetTimer(AwakeKeepAlive, (g_AwakeMode != "Off") ? 50000 : 0)
     UpdateAwakeMenu()
     UpdateAwakeTip()
 }
 
-; Ripetuta ogni 50s mentre "Tieni sveglio" e' attivo: rinnova la richiesta al sistema.
+; Ripetuta ogni 50s mentre "Tieni sveglio" e' attivo: ristabilisce la richiesta
+; continua. Senza ES_CONTINUOUS il "poke" momentaneo non basta a impedire lo
+; sleep su Windows 10/11, e la richiesta continua puo' andare persa dopo una
+; sospensione/ripresa: ripeterla identica ogni 50s copre entrambi i casi.
 AwakeKeepAlive() {
     global g_AwakeMode, g_KeepScreen
     if (g_AwakeMode = "Off") {
         SetTimer(AwakeKeepAlive, 0)
         return
     }
-    flags := 0x00000001                     ; ES_SYSTEM_REQUIRED (senza CONTINUOUS = reset del timer di inattivita')
+    flags := 0x80000000 | 0x00000001        ; ES_CONTINUOUS | ES_SYSTEM_REQUIRED
     if g_KeepScreen
-        flags |= 0x00000002
+        flags |= 0x00000002                 ; ES_DISPLAY_REQUIRED
     DllCall("kernel32\SetThreadExecutionState", "UInt", flags)
     UpdateAwakeTip()                        ; aggiorna il tempo rimanente nel tooltip
+}
+
+; Chiamata da Windows ai cambi di stato di alimentazione (WM_POWERBROADCAST):
+; al risveglio dalla sospensione ristabilisce subito la richiesta "Tieni sveglio",
+; senza aspettare fino a 50s la ri-asserzione periodica.
+OnPowerBroadcast(wParam, lParam, msg, hwnd) {
+    global g_AwakeMode
+    if (wParam = 0x12) {                    ; PBT_APMRESUMEAUTOMATIC: sistema appena ripreso
+        if (g_AwakeMode != "Off")
+            ApplyAwake()
+        return true
+    }
 }
 
 IntervalHandler(itemName, *) {
