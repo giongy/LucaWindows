@@ -15,6 +15,7 @@ autonomo (non richiede AutoHotkey installato sul PC di destinazione).
 - 🔔 Finestra "Mostra hotkey" con il riepilogo dei tasti
 - 🚀 Opzione **Avvia con Windows** (crea un collegamento nella cartella Esecuzione automatica)
 - ☕ **Tieni sveglio** (stile PowerToys Awake): impedisce la sospensione e, a scelta, lo spegnimento dello schermo — indefinitamente o per un intervallo (30 min / 1 / 2 / 4 / 8 / 12 ore)
+- 🌙 **Spegnimento automatico** ogni giorno a un orario scelto (con conto alla rovescia di 60 s per annullare); l'impostazione viene ricordata. Se a quell'ora il PC è sospeso, non viene spento
 - 🎨 Menu del tray con **icone colorate** e **tema scuro** su Windows 11
 
 ## Hotkey predefiniti
