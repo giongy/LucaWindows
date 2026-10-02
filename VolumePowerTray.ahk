@@ -259,8 +259,30 @@ SuspendNow() {
 DoShutdown(*) {
     CountdownConfirm("Spegnimento", "Annulla spegnimento", ConfirmSecs(), ShutdownNow)
 }
+; Il comando Shutdown di AHK (ExitWindowsEx) fallisce in silenzio se ci sono altri
+; utenti collegati (cambio rapido utente). InitiateShutdownW con SHUTDOWN_FORCE_OTHERS
+; invece disconnette le altre sessioni e spegne. Se fallisce si ripiega su Shutdown.
 ShutdownNow() {
-    Shutdown 1     ; 1 = spegni. Se restasse appeso usa Shutdown(1+4) per forzare la chiusura delle app
+    EnableShutdownPrivilege()
+    ; 0x1 SHUTDOWN_FORCE_OTHERS | 0x8 SHUTDOWN_POWEROFF; motivo 0x80000000 = pianificato
+    err := DllCall("Advapi32\InitiateShutdownW", "Ptr", 0, "Ptr", 0, "UInt", 0
+        , "UInt", 0x1 | 0x8, "UInt", 0x80000000, "UInt")
+    if (err != 0)
+        Shutdown 1     ; 1 = spegni. Se restasse appeso usa Shutdown(1+4) per forzare la chiusura delle app
+}
+
+; InitiateShutdownW richiede che il privilegio SeShutdownPrivilege sia attivo nel token.
+EnableShutdownPrivilege() {
+    if !DllCall("Advapi32\OpenProcessToken", "Ptr", DllCall("GetCurrentProcess", "Ptr")
+            , "UInt", 0x28, "Ptr*", &hToken := 0)       ; TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY
+        return
+    tp := Buffer(16, 0)                                 ; TOKEN_PRIVILEGES con un solo LUID_AND_ATTRIBUTES
+    NumPut("UInt", 1, tp, 0)
+    if DllCall("Advapi32\LookupPrivilegeValueW", "Ptr", 0, "Str", "SeShutdownPrivilege", "Ptr", tp.Ptr + 4) {
+        NumPut("UInt", 2, tp, 12)                       ; SE_PRIVILEGE_ENABLED
+        DllCall("Advapi32\AdjustTokenPrivileges", "Ptr", hToken, "Int", 0, "Ptr", tp, "UInt", 0, "Ptr", 0, "Ptr", 0)
+    }
+    DllCall("CloseHandle", "Ptr", hToken)
 }
 
 
