@@ -29,8 +29,8 @@ Defaults := Map(
     "SecondiConferma", "5",
     "TieniSveglio",    "Off",
     "TieniSchermo",    "0",
-    "SpegnimentoAuto", "0",
-    "SpegnimentoOra",  "01:00")
+    "SospensioneAuto", "0",
+    "SospensioneOra",  "01:00")
 
 Cfg := Map()          ; configurazione corrente (chiave -> valore)
 Registered := Map()   ; hotkey attualmente registrati (azione -> stringa tasto)
@@ -39,8 +39,8 @@ g_CdActive := false   ; true mentre una finestra di conto alla rovescia e' gia' 
 g_AwakeMode := "Off"   ; modalita' "Tieni sveglio": "Off" | "Indefinitamente" | una durata (es. "1 ora")
 g_KeepScreen := false  ; true = tieni acceso anche lo schermo
 g_AwakeExpiry := 0     ; A_TickCount di scadenza dell'intervallo (0 = nessuna scadenza)
-g_ShutTarget := ""     ; prossimo spegnimento automatico (YYYYMMDDHH24MISS), "" = disattivato
-AUTO_SHUT_SECS := 60   ; conto alla rovescia prima dello spegnimento automatico
+g_SleepTarget := ""     ; prossima sospensione automatica (YYYYMMDDHH24MISS), "" = disattivato
+AUTO_SLEEP_SECS := 60   ; conto alla rovescia prima della sospensione automatica
 INTERVAL_MIN := Map("30 minuti", 30, "1 ora", 60, "2 ore", 120, "4 ore", 240, "8 ore", 480, "12 ore", 720)  ; durate per "Per un intervallo"
 
 LoadConfig()
@@ -79,14 +79,14 @@ awakeMenu.Add()                                                        ; separat
 awakeMenu.Add("Tieni acceso lo schermo", (*) => ToggleKeepScreen())    ; interruttore indipendente
 awakeMenu.Check("Off")
 
-; ---------- Sottomenu "Spegnimento automatico" ----------
+; ---------- Sottomenu "Sospensione automatica" ----------
 ; la prima voce mostra l'orario ("Ogni giorno alle 01:00") e viene rinominata quando cambia
-g_ShutItem := "Ogni giorno alle " Cfg["SpegnimentoOra"]
-shutMenu := Menu()
-shutMenu.Add(g_ShutItem, (*) => AutoShutSet(true))
-shutMenu.Add("Off", (*) => AutoShutSet(false))
-shutMenu.Add()                                                         ; separatore
-shutMenu.Add("Cambia orario...", (*) => ShowAutoShutTime())
+g_SleepItem := "Ogni giorno alle " Cfg["SospensioneOra"]
+sleepMenu := Menu()
+sleepMenu.Add(g_SleepItem, (*) => AutoSleepSet(true))
+sleepMenu.Add("Off", (*) => AutoSleepSet(false))
+sleepMenu.Add()                                                         ; separatore
+sleepMenu.Add("Cambia orario...", (*) => ShowAutoSleepTime())
 
 
 ; ---------- Menu del tray (clic destro sull'icona) ----------
@@ -98,7 +98,7 @@ tray.Add("Sospendi",    (*) => DoSleep())
 tray.Add("Spegni...",   (*) => DoShutdown())
 tray.Add()                                 ; separatore
 tray.Add("Tieni sveglio", awakeMenu)       ; sottomenu nativo
-tray.Add("Spegnimento automatico", shutMenu)
+tray.Add("Sospensione automatica", sleepMenu)
 tray.Add()                                 ; separatore
 tray.Add("Impostazioni...",   (*) => ShowSettings())
 tray.Add("Avvia con Windows", (*) => ToggleStartup())
@@ -123,7 +123,7 @@ FileInstall("icons\info.ico",         iconDir "\info.ico", 1)
 FileInstall("icons\esci.ico",         iconDir "\esci.ico", 1)
 for voce, nomeFile in Map(
     "Volume su", "volsu",  "Volume giu'", "volgiu",  "Sospendi", "sospendi",
-    "Spegni...", "spegni",  "Tieni sveglio", "sveglio",  "Spegnimento automatico", "spegni",
+    "Spegni...", "spegni",  "Tieni sveglio", "sveglio",  "Sospensione automatica", "sospendi",
     "Impostazioni...", "impostazioni",
     "Mostra hotkey", "hotkey",  "Info", "info",  "Esci", "esci")
     try tray.SetIcon(voce, iconDir "\" nomeFile ".ico")
@@ -132,7 +132,7 @@ for voce, nomeFile in Map(
 g_AwakeMode  := (Cfg["TieniSveglio"] = "Indefinitamente") ? "Indefinitamente" : "Off"
 g_KeepScreen := (Cfg["TieniSchermo"] = "1")
 ApplyAwake()
-ApplyAutoShut()
+ApplyAutoSleep()
 OnMessage(0x218, OnPowerBroadcast)         ; WM_POWERBROADCAST: riapplica al risveglio
 
 
@@ -150,11 +150,20 @@ LoadConfig() {
         CreateDefaultConfig()
         g_FirstRun := true
     }
+    ; versioni precedenti: lo "Spegnimento automatico" e' diventato "Sospensione automatica"
+    for vecchia, nuova in Map("SpegnimentoAuto", "SospensioneAuto", "SpegnimentoOra", "SospensioneOra") {
+        v := IniRead(ConfigFile, CONFIG_SECTION, vecchia, "")
+        if (v != "") {
+            if (IniRead(ConfigFile, CONFIG_SECTION, nuova, "") = "")
+                try IniWrite(v, ConfigFile, CONFIG_SECTION, nuova)
+            try IniDelete(ConfigFile, CONFIG_SECTION, vecchia)
+        }
+    }
     Cfg := Map()
     for chiave, predef in Defaults
         Cfg[chiave] := IniRead(ConfigFile, CONFIG_SECTION, chiave, predef)
-    if !RegExMatch(Cfg["SpegnimentoOra"], "^([01]\d|2[0-3]):[0-5]\d$")
-        Cfg["SpegnimentoOra"] := Defaults["SpegnimentoOra"]
+    if !RegExMatch(Cfg["SospensioneOra"], "^([01]\d|2[0-3]):[0-5]\d$")
+        Cfg["SospensioneOra"] := Defaults["SospensioneOra"]
 }
 
 CreateDefaultConfig() {
@@ -172,8 +181,8 @@ CreateDefaultConfig() {
         . "; SecondiConferma  durata del conto alla rovescia prima di sleep/spegnimento`r`n"
         . "; TieniSveglio     Off | Indefinitamente   (gli intervalli non vengono ricordati)`r`n"
         . "; TieniSchermo     1 = tieni acceso anche lo schermo quando sei sveglio`r`n"
-        . "; SpegnimentoAuto  1 = spegni il PC ogni giorno all'orario SpegnimentoOra`r`n"
-        . "; SpegnimentoOra   orario dello spegnimento automatico (HH:MM, es. 01:00)`r`n"
+        . "; SospensioneAuto  1 = sospendi il PC ogni giorno all'orario SospensioneOra`r`n"
+        . "; SospensioneOra   orario della sospensione automatica (HH:MM, es. 01:00)`r`n"
         . "; ============================================================`r`n"
         . "`r`n"
         . "[" CONFIG_SECTION "]`r`n"
@@ -185,8 +194,8 @@ CreateDefaultConfig() {
         . "SecondiConferma=" Defaults["SecondiConferma"] "`r`n"
         . "TieniSveglio=" Defaults["TieniSveglio"] "`r`n"
         . "TieniSchermo=" Defaults["TieniSchermo"] "`r`n"
-        . "SpegnimentoAuto=" Defaults["SpegnimentoAuto"] "`r`n"
-        . "SpegnimentoOra=" Defaults["SpegnimentoOra"] "`r`n"
+        . "SospensioneAuto=" Defaults["SospensioneAuto"] "`r`n"
+        . "SospensioneOra=" Defaults["SospensioneOra"] "`r`n"
     try FileAppend(testo, ConfigFile)
 }
 
@@ -259,30 +268,49 @@ SuspendNow() {
 DoShutdown(*) {
     CountdownConfirm("Spegnimento", "Annulla spegnimento", ConfirmSecs(), ShutdownNow)
 }
-; Il comando Shutdown di AHK (ExitWindowsEx) fallisce in silenzio se ci sono altri
-; utenti collegati (cambio rapido utente). InitiateShutdownW con SHUTDOWN_FORCE_OTHERS
-; invece disconnette le altre sessioni e spegne. Se fallisce si ripiega su Shutdown.
+; Il comando Shutdown di AHK (ExitWindowsEx) con altri utenti collegati (cambio rapido
+; utente) apre un dialogo di user32 "Other people are logged on..." che blocca tutto
+; finche' qualcuno non risponde: per questo NON va usato. InitiateShutdownW con
+; SHUTDOWN_FORCE_OTHERS disconnette le altre sessioni e spegne senza chiedere; se
+; fallisce si ripiega su shutdown.exe. Gli esiti finiscono in VolumePowerTray.log.
 ShutdownNow() {
-    EnableShutdownPrivilege()
-    ; 0x1 SHUTDOWN_FORCE_OTHERS | 0x8 SHUTDOWN_POWEROFF; motivo 0x80000000 = pianificato
+    priv := EnableShutdownPrivilege()
+    ; 0x1 SHUTDOWN_FORCE_OTHERS | 0x2 SHUTDOWN_FORCE_SELF | 0x8 SHUTDOWN_POWEROFF; motivo 0 = Altro
     err := DllCall("Advapi32\InitiateShutdownW", "Ptr", 0, "Ptr", 0, "UInt", 0
-        , "UInt", 0x1 | 0x8, "UInt", 0x80000000, "UInt")
-    if (err != 0)
-        Shutdown 1     ; 1 = spegni. Se restasse appeso usa Shutdown(1+4) per forzare la chiusura delle app
+        , "UInt", 0x1 | 0x2 | 0x8, "UInt", 0, "UInt")
+    WriteLog("Spegnimento: privilegio=" priv ", InitiateShutdownW=" err)
+    if (err = 0)
+        return
+    try {
+        rc := RunWait(A_WinDir "\System32\shutdown.exe /s /f /t 0", , "Hide")
+        WriteLog("Spegnimento: shutdown.exe exit=" rc)
+    } catch as e {
+        WriteLog("Spegnimento: shutdown.exe non avviato (" e.Message ")")
+    }
 }
 
 ; InitiateShutdownW richiede che il privilegio SeShutdownPrivilege sia attivo nel token.
+; Restituisce "ok" oppure una descrizione dell'errore (per il log).
 EnableShutdownPrivilege() {
     if !DllCall("Advapi32\OpenProcessToken", "Ptr", DllCall("GetCurrentProcess", "Ptr")
             , "UInt", 0x28, "Ptr*", &hToken := 0)       ; TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY
-        return
+        return "OpenProcessToken " A_LastError
     tp := Buffer(16, 0)                                 ; TOKEN_PRIVILEGES con un solo LUID_AND_ATTRIBUTES
     NumPut("UInt", 1, tp, 0)
+    esito := "ok"
     if DllCall("Advapi32\LookupPrivilegeValueW", "Ptr", 0, "Str", "SeShutdownPrivilege", "Ptr", tp.Ptr + 4) {
         NumPut("UInt", 2, tp, 12)                       ; SE_PRIVILEGE_ENABLED
         DllCall("Advapi32\AdjustTokenPrivileges", "Ptr", hToken, "Int", 0, "Ptr", tp, "UInt", 0, "Ptr", 0, "Ptr", 0)
-    }
+        if (A_LastError != 0)                           ; 1300 = ERROR_NOT_ALL_ASSIGNED
+            esito := "AdjustTokenPrivileges " A_LastError
+    } else
+        esito := "LookupPrivilegeValue " A_LastError
     DllCall("CloseHandle", "Ptr", hToken)
+    return esito
+}
+
+WriteLog(msg) {
+    try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") "  " msg "`r`n", A_ScriptDir "\VolumePowerTray.log", "UTF-8")
 }
 
 
@@ -360,7 +388,7 @@ OnPowerBroadcast(wParam, lParam, msg, hwnd) {
     if (wParam = 0x12) {                    ; PBT_APMRESUMEAUTOMATIC: sistema appena ripreso
         if (g_AwakeMode != "Off")
             ApplyAwake()
-        AutoShutCheck()                     ; se l'orario e' passato durante la sospensione, lo salta
+        AutoSleepCheck()                     ; se l'orario e' passato durante la sospensione, lo salta
         return true
     }
 }
@@ -400,15 +428,15 @@ UpdateAwakeMenu() {
 }
 
 UpdateAwakeTip() {
-    global g_AwakeMode, g_KeepScreen, g_ShutTarget, Cfg
+    global g_AwakeMode, g_KeepScreen, g_SleepTarget, Cfg
     tip := "Volume & Power Tray"
     if (g_AwakeMode != "Off") {
         extra := g_KeepScreen ? " (+ schermo)" : ""
         rim := RemainingText()
         tip .= "`nSveglio: " g_AwakeMode extra (rim != "" ? " - resta " rim : "")
     }
-    if (g_ShutTarget != "")
-        tip .= "`nSpegnimento alle " Cfg["SpegnimentoOra"]
+    if (g_SleepTarget != "")
+        tip .= "`nSospensione alle " Cfg["SospensioneOra"]
     A_IconTip := tip
 }
 
@@ -442,100 +470,100 @@ AwakeStateText() {
 
 
 ; ============================================================
-;  SPEGNIMENTO AUTOMATICO
-;  Ogni giorno all'orario SpegnimentoOra mostra il conto alla
-;  rovescia (annullabile) e poi spegne. Se a quell'ora il PC era
-;  sospeso, lo spegnimento di quel giorno viene saltato.
+;  SOSPENSIONE AUTOMATICA
+;  Ogni giorno all'orario SospensioneOra mostra il conto alla
+;  rovescia (annullabile) e poi sospende. Se a quell'ora il PC era
+;  gia' sospeso, la sospensione di quel giorno viene saltata.
 ; ============================================================
-AutoShutSet(attivo) {
+AutoSleepSet(attivo) {
     global Cfg, ConfigFile, CONFIG_SECTION
-    Cfg["SpegnimentoAuto"] := attivo ? "1" : "0"
-    try IniWrite(Cfg["SpegnimentoAuto"], ConfigFile, CONFIG_SECTION, "SpegnimentoAuto")
-    ApplyAutoShut()
+    Cfg["SospensioneAuto"] := attivo ? "1" : "0"
+    try IniWrite(Cfg["SospensioneAuto"], ConfigFile, CONFIG_SECTION, "SospensioneAuto")
+    ApplyAutoSleep()
 }
 
-; Calcola il prossimo spegnimento e avvia/ferma il controllo periodico.
-ApplyAutoShut() {
-    global Cfg, g_ShutTarget
-    if (Cfg["SpegnimentoAuto"] = "1") {
-        g_ShutTarget := NextShutTarget()
-        SetTimer(AutoShutCheck, 20000)
+; Calcola la prossima sospensione e avvia/ferma il controllo periodico.
+ApplyAutoSleep() {
+    global Cfg, g_SleepTarget
+    if (Cfg["SospensioneAuto"] = "1") {
+        g_SleepTarget := NextSleepTarget()
+        SetTimer(AutoSleepCheck, 20000)
     } else {
-        g_ShutTarget := ""
-        SetTimer(AutoShutCheck, 0)
+        g_SleepTarget := ""
+        SetTimer(AutoSleepCheck, 0)
     }
-    UpdateAutoShutMenu()
+    UpdateAutoSleepMenu()
     UpdateAwakeTip()
 }
 
-; Prossima occorrenza futura di SpegnimentoOra (oggi o domani), come YYYYMMDDHH24MISS.
-NextShutTarget() {
+; Prossima occorrenza futura di SospensioneOra (oggi o domani), come YYYYMMDDHH24MISS.
+NextSleepTarget() {
     global Cfg
-    t := FormatTime(A_Now, "yyyyMMdd") StrReplace(Cfg["SpegnimentoOra"], ":") "00"
+    t := FormatTime(A_Now, "yyyyMMdd") StrReplace(Cfg["SospensioneOra"], ":") "00"
     return (t > A_Now) ? t : DateAdd(t, 1, "Days")
 }
 
-; Ogni 20s (e alla ripresa dalla sospensione): se l'orario e' arrivato spegne,
+; Ogni 20s (e alla ripresa dalla sospensione): se l'orario e' arrivato sospende,
 ; con conto alla rovescia. Un ritardo oltre 2 minuti significa che il PC era
-; sospeso a quell'ora: in quel caso non spegne. In entrambi i casi passa al giorno dopo.
-AutoShutCheck() {
-    global g_ShutTarget, AUTO_SHUT_SECS
-    if (g_ShutTarget = "" || A_Now < g_ShutTarget)
+; sospeso a quell'ora: in quel caso non fa nulla. In entrambi i casi passa al giorno dopo.
+AutoSleepCheck() {
+    global g_SleepTarget, AUTO_SLEEP_SECS
+    if (g_SleepTarget = "" || A_Now < g_SleepTarget)
         return
-    ritardo := DateDiff(A_Now, g_ShutTarget, "Seconds")
-    g_ShutTarget := NextShutTarget()
+    ritardo := DateDiff(A_Now, g_SleepTarget, "Seconds")
+    g_SleepTarget := NextSleepTarget()
     if (ritardo <= 120)
-        CountdownConfirm("Spegnimento", "Annulla spegnimento", AUTO_SHUT_SECS, ShutdownNow)
+        CountdownConfirm("Sospensione", "Annulla sleep", AUTO_SLEEP_SECS, SuspendNow)
 }
 
-UpdateAutoShutMenu() {
-    global shutMenu, g_ShutItem, g_ShutTarget
-    if (g_ShutTarget != "") {
-        shutMenu.Check(g_ShutItem)
-        shutMenu.Uncheck("Off")
+UpdateAutoSleepMenu() {
+    global sleepMenu, g_SleepItem, g_SleepTarget
+    if (g_SleepTarget != "") {
+        sleepMenu.Check(g_SleepItem)
+        sleepMenu.Uncheck("Off")
     } else {
-        shutMenu.Uncheck(g_ShutItem)
-        shutMenu.Check("Off")
+        sleepMenu.Uncheck(g_SleepItem)
+        sleepMenu.Check("Off")
     }
 }
 
-; Testo leggibile dello stato dello spegnimento automatico (per la finestra Mostra hotkey).
-AutoShutStateText() {
-    global Cfg, g_ShutTarget
-    if (g_ShutTarget = "")
+; Testo leggibile dello stato della sospensione automatica (per la finestra Mostra hotkey).
+AutoSleepStateText() {
+    global Cfg, g_SleepTarget
+    if (g_SleepTarget = "")
         return "Off"
-    min := DateDiff(g_ShutTarget, A_Now, "Minutes")
-    return "Alle " Cfg["SpegnimentoOra"] "  (tra " (min >= 60 ? min // 60 " h " Mod(min, 60) " min" : min " min") ")"
+    min := DateDiff(g_SleepTarget, A_Now, "Minutes")
+    return "Alle " Cfg["SospensioneOra"] "  (tra " (min >= 60 ? min // 60 " h " Mod(min, 60) " min" : min " min") ")"
 }
 
-; Finestrella per scegliere l'orario; salvando attiva anche lo spegnimento automatico.
-ShowAutoShutTime() {
+; Finestrella per scegliere l'orario; salvando attiva anche la sospensione automatica.
+ShowAutoSleepTime() {
     global Cfg
-    g := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", "Spegnimento automatico")
+    g := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", "Sospensione automatica")
     g.BackColor := "White"
     g.MarginX := 20
     g.MarginY := 16
     g.SetFont("s10", "Segoe UI")
-    g.AddText("x20 y19 w150", "Spegni ogni giorno alle")
-    dt := g.AddDateTime("x175 y16 w80 1", "HH:mm")                  ; 1 = frecce su/giu' al posto del calendario
-    dt.Value := "20000101" StrReplace(Cfg["SpegnimentoOra"], ":") "00"
+    g.AddText("x20 y19 w160", "Sospendi ogni giorno alle")
+    dt := g.AddDateTime("x182 y16 w80 1", "HH:mm")                  ; 1 = frecce su/giu' al posto del calendario
+    dt.Value := "20000101" StrReplace(Cfg["SospensioneOra"], ":") "00"
     g.SetFont("s9", "Segoe UI")
-    g.AddText("x20 y50 w235 c808080", "Se a quell'ora il PC e' sospeso, non viene spento.")
+    g.AddText("x20 y50 w235 c808080", "Se a quell'ora il PC e' gia' sospeso, non fa nulla.")
     btnOk := g.AddButton("x75 y80 w88 Default", "Salva")
     btnAnn := g.AddButton("x167 y80 w88", "Annulla")
 
     Salva(*) {
-        global Cfg, ConfigFile, CONFIG_SECTION, shutMenu, g_ShutItem
+        global Cfg, ConfigFile, CONFIG_SECTION, sleepMenu, g_SleepItem
         v := dt.Value
-        Cfg["SpegnimentoOra"] := SubStr(v, 9, 2) ":" SubStr(v, 11, 2)
-        try IniWrite(Cfg["SpegnimentoOra"], ConfigFile, CONFIG_SECTION, "SpegnimentoOra")
-        nuovo := "Ogni giorno alle " Cfg["SpegnimentoOra"]
-        if (nuovo != g_ShutItem) {
-            shutMenu.Rename(g_ShutItem, nuovo)
-            g_ShutItem := nuovo
+        Cfg["SospensioneOra"] := SubStr(v, 9, 2) ":" SubStr(v, 11, 2)
+        try IniWrite(Cfg["SospensioneOra"], ConfigFile, CONFIG_SECTION, "SospensioneOra")
+        nuovo := "Ogni giorno alle " Cfg["SospensioneOra"]
+        if (nuovo != g_SleepItem) {
+            sleepMenu.Rename(g_SleepItem, nuovo)
+            g_SleepItem := nuovo
         }
         g.Destroy()
-        AutoShutSet(true)
+        AutoSleepSet(true)
     }
     Annulla(*) => g.Destroy()
     btnOk.OnEvent("Click", Salva)
@@ -765,11 +793,11 @@ ShowInfo(*) {
     g.SetFont("s10 Bold", "Segoe UI")
     g.AddText("x140 y" (yEnd + 16) " w208 c2563EB", AwakeStateText())
 
-    ; stato "Spegnimento automatico"
+    ; stato "Sospensione automatica"
     g.SetFont("s10", "Segoe UI")
-    g.AddText("x22 y" (yEnd + 44) " w110 c444444", "Spegnimento")
+    g.AddText("x22 y" (yEnd + 44) " w110 c444444", "Sospensione")
     g.SetFont("s10 Bold", "Segoe UI")
-    g.AddText("x140 y" (yEnd + 44) " w208 c2563EB", AutoShutStateText())
+    g.AddText("x140 y" (yEnd + 44) " w208 c2563EB", AutoSleepStateText())
 
     ; separatore + nota
     g.AddText("x22 y" (yEnd + 72) " w326 0x10", "")
